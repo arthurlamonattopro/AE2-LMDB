@@ -1,0 +1,325 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+    // Usado para "shadear" o lmdbjava (e o Agrona/native libs que ele traz) dentro do jar final,
+    // evitando conflito de classpath com outros mods que também dependam de lmdbjava.
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+// Mojang ships Java 17 to end users in 1.18+, so your mod should target Java 17.
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
+minecraft {
+    // The mappings can be changed at any time and must be in the following format.
+    // Channel:   Version:
+    // official   MCVersion             Official field/method names from Mojang mapping files
+    // parchment  YYYY.MM.DD-MCVersion  Open community-sourced parameter names and javadocs layered on top of official
+    //
+    // You must be aware of the Mojang license when using the 'official' or 'parchment' mappings.
+    // See more information here: https://github.com/MinecraftForge/MCPConfig/blob/master/Mojang.md
+    //
+    // Parchment is an unofficial project maintained by ParchmentMC, separate from MinecraftForge
+    // Additional setup is needed to use their mappings: https://parchmentmc.org/docs/getting-started
+    //
+    // Use non-default mappings at your own risk. They may not always work.
+    // Simply re-run your setup task after changing the mappings to update your workspace.
+    mappings channel: mapping_channel, version: mapping_version
+
+    // When true, this property will have all Eclipse/IntelliJ IDEA run configurations run the "prepareX" task for the given run configuration before launching the game.
+    // In most cases, it is not necessary to enable.
+    // enableEclipsePrepareRuns = true
+    // enableIdeaPrepareRuns = true
+
+    // This property allows configuring Gradle's ProcessResources task(s) to run on IDE output locations before launching the game.
+    // It is REQUIRED to be set to true for this template to function.
+    // See https://docs.gradle.org/current/dsl/org.gradle.language.jvm.tasks.ProcessResources.html
+    copyIdeResources = true
+
+    // When true, this property will add the folder name of all declared run configurations to generated IDE run configurations.
+    // The folder name can be set on a run configuration using the "folderName" property.
+    // By default, the folder name of a run configuration is the name of the Gradle project containing it.
+    // generateRunFolders = true
+
+    // This property enables access transformers for use in development.
+    // They will be applied to the Minecraft artifact.
+    // The access transformer file can be anywhere in the project.
+    // However, it must be at "META-INF/accesstransformer.cfg" in the final mod jar to be loaded by Forge.
+    // This default location is a best practice to automatically put the file in the right place in the final jar.
+    // See https://docs.minecraftforge.net/en/latest/advanced/accesstransformers/ for more information.
+    // accessTransformer = file('src/main/resources/META-INF/accesstransformer.cfg')
+
+    // Default run configurations.
+    // These can be tweaked, removed, or duplicated as needed.
+    runs {
+        // applies to all the run configs below
+        configureEach {
+            workingDirectory project.file('run')
+
+            // Recommended logging data for a userdev environment
+            // The markers can be added/remove as needed separated by commas.
+            // "SCAN": For mods scan.
+            // "REGISTRIES": For firing of registry events.
+            // "REGISTRYDUMP": For getting the contents of all registries.
+            property 'forge.logging.markers', 'REGISTRIES'
+
+            // Recommended logging level for the console
+            // You can set various levels here.
+            // Please read: https://stackoverflow.com/questions/2031163/when-to-use-the-different-log-levels
+            property 'forge.logging.console.level', 'debug'
+
+            // Workaround para o bug de refmap do AE2 em Forge userdev com mappings `official`.
+            //
+            // O jar do AE2 15.x no CurseForge (e no modmaven.dev, que e o mesmo jar) vem com um
+            // ae2.mixins.refmap.json que so tem a tabela `searge` (srg->srg, usada em producao).
+            // Em userdev com mappings `official` (Mojang names), o Mixin precisa de uma tabela
+            // `mcp` ou `official` no refmap para traduzir os nomes de metodos do source -> runtime.
+            // Sem essa tabela, o Mixin cai no fallback `searge` e traduz `createLevels` ->
+            // `m_129815_` (srg). Mas a classe runtime `MinecraftServer` no userdev `official` tem
+            // `createLevels`, nao `m_129815_` -- entao a injecao falha com
+            // `InvalidInjectionException: could not find any targets matching 'm_129815_'`.
+            //
+            // Desabilitar o refmap forca o Mixin a usar os nomes do bytecode diretamente. O AE2
+            // usa Mojang names no source (ex.: `method = "createLevels"` em
+            // `appeng.mixins.spatial.MinecraftServerMixin`), e esses nomes batem com o runtime
+            // `official` do userdev -- entao todas as injecoes do AE2 passam a resolver.
+            //
+            // Side effect: qualquer mod cujo source use nomes SRG/MCP (em vez de Mojang) nas
+            // annotations `@Inject`/`@Redirect`/etc. vai quebrar. Nao e o caso do AE2 15.x nem
+            // do GuideME (que nem usa mixins em 1.20.1), mas vale revisar se mais mods forem
+            // adicionados ao environment de dev.
+            property 'mixin.env.disableRefMap', 'true'
+
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                }
+            }
+        }
+
+        client {
+            // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
+            property 'forge.enabledGameTestNamespaces', mod_id
+        }
+
+        server {
+            property 'forge.enabledGameTestNamespaces', mod_id
+            args '--nogui'
+        }
+
+        // This run config launches GameTestServer and runs all registered gametests, then exits.
+        // By default, the server will crash when no gametests are provided.
+        // The gametest system is also enabled by default for other run configs under the /test command.
+        gameTestServer {
+            property 'forge.enabledGameTestNamespaces', mod_id
+        }
+
+        data {
+            // example of overriding the workingDirectory set in configureEach above
+            workingDirectory project.file('run-data')
+
+            // Specify the modid for data generation, where to output the resulting resource, and where to look for existing resources.
+            args '--mod', mod_id, '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
+        }
+    }
+}
+
+// Include resources generated by data generators.
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+repositories {
+    // Put repositories for dependencies here
+    // ForgeGradle automatically adds the Forge maven and Maven Central for you
+
+    // CurseMaven: usado só para o jar do AE2 1.20.1 (linha 15.x), que não está publicado no Maven Central
+    // (o AE2 só publica lá a partir das versões para MC 1.21+). Ver https://cursemaven.com
+    maven {
+        url 'https://cursemaven.com'
+        content {
+            includeGroup 'curse.maven'
+        }
+    }
+
+    // If you have mod jar dependencies in ./libs, you can declare them as a repository like so.
+    // See https://docs.gradle.org/current/userguide/declaring_repositories.html#sub:flat_dir_resolver
+    // flatDir {
+    //     dir 'libs'
+    // }
+}
+
+// Dependência isolada para tudo que deve ser "shadeado" (empacotado) dentro do jar final do mod,
+// em vez de ficar apenas no classpath de compilação/execução (que é o que 'implementation' faria sozinho).
+//
+// A partir do Forge 1.17+, o Forge userdev NÃO carrega bibliotecas Java do classpath normal
+// (implementation/runtimeOnly) a menos que elas sejam explicitamente declaradas como mods. O
+// ForgeGradle fornece a configuração 'minecraftLibrary' especificamente para isto: deps
+// declaradas com minecraftLibrary são adicionadas ao classpath de launch dos runs de dev
+// (runClient/runServer) pelo ForgeGradle. Ver
+// https://gist.github.com/SizableShrimp/66b22f1b24c255e1491c8d98d3f11f83
+//
+// Mantemos 'shade' como configuração raiz para o shadowJar (que empacota tudo que está
+// nela no jar final de produção), e fazemos 'minecraftLibrary' extender 'shade' para que a
+// mesma declaração de dependência sirva para os dois propósitos: (a) classpath de dev via
+// minecraftLibrary, (b) shadowJar via shade.
+configurations {
+    shade
+    implementation.extendsFrom shade
+    minecraftLibrary.extendsFrom shade
+}
+
+dependencies {
+    // Specify the version of Minecraft to use.
+    // Any artifact can be supplied so long as it has a "userdev" classifier artifact and is a compatible patcher artifact.
+    // The "userdev" classifier will be requested and setup by ForgeGradle.
+    // If the group id is "net.minecraft" and the artifact id is one of ["client", "server", "joined"],
+    // then special handling is done to allow a setup of a vanilla dependency without the use of an external repository.
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    // AE2 via CurseMaven (deobfuscado com fg.deobf), já que a linha 1.20.1 (15.x) não está no Maven Central.
+    // 'implementation' aqui só coloca o AE2 no classpath de compilação e nos runs de dev (runClient/runServer);
+    // ele NÃO é embutido no jar final — em produção o usuário precisa ter o AE2 instalado separadamente.
+    implementation fg.deobf("curse.maven:applied-energistics-2-${ae2_curseforge_project_id}:${ae2_curseforge_file_id}")
+
+    // GuideME via CurseMaven (deobfuscado com fg.deobf) — dependência obrigatória do AE2 em tempo
+    // de execução: o guidebook em jogo do AE2 foi extraído pra este addon separado, e o AE2 não
+    // inicializa sem ele presente. Mesma situação do AE2: não publicado no Maven Central pra essa
+    // linha de versão, só via CurseMaven.
+    implementation fg.deobf("curse.maven:guideme-${guideme_curseforge_project_id}:${guideme_curseforge_file_id}")
+
+    // lmdbjava (e dependências transitivas, ex. jnr-ffi/jnr-constants para native loading).
+    //
+    // Em produção (jar final publicado no CurseForge/Modrinth), lmdbjava é "shadeado" dentro
+    // do nosso próprio jar via 'shadowJar' + a configuração 'shade' (ver shadowJar task
+    // abaixo) — não precisa ser declarado por quem instala o mod.
+    //
+    // Em dev (runClient/runServer), a partir do Forge 1.17+ o userdev NÃO carrega bibliotecas
+    // Java do classpath normal a menos que sejam declaradas como mods. A configuração
+    // 'minecraftLibrary' (que extends 'shade' no bloco configurations acima) é o mecanismo
+    // padrão do ForgeGradle para isto: deps declaradas com 'shade' ficam automaticamente
+    // disponíveis tanto no classpath de dev (via minecraftLibrary) quanto no shadowJar de
+    // produção (via shade). Não precisa de declaração extra como runtimeOnly.
+    shade "org.lmdbjava:lmdbjava:${lmdbjava_version}"
+
+    // JUnit 5, só pra testes que NÃO precisam do Minecraft rodando (ex. LmdbManagerTest — Fase 1 do TODO.md).
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+
+    // Example mod dependency with JEI - using fg.deobf() ensures the dependency is remapped to your development mappings
+    // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
+    // compileOnly fg.deobf("mezz.jei:jei-${mc_version}-common-api:${jei_version}")
+    // compileOnly fg.deobf("mezz.jei:jei-${mc_version}-forge-api:${jei_version}")
+    // runtimeOnly fg.deobf("mezz.jei:jei-${mc_version}-forge:${jei_version}")
+
+    // Example mod dependency using a mod jar from ./libs with a flat dir repository
+    // This maps to ./libs/coolmod-${mc_version}-${coolmod_version}.jar
+    // The group id is ignored when searching -- in this case, it is "blank"
+    // implementation fg.deobf("blank:coolmod-${mc_version}:${coolmod_version}")
+
+    // For more info:
+    // http://www.gradle.org/docs/current/userguide/artifact_dependencies_tutorial.html
+    // http://www.gradle.org/docs/current/userguide/dependency_management.html
+}
+
+// This block of code expands all declared replace properties in the specified resource targets.
+// A missing property will result in an error. Properties are expanded using ${} Groovy notation.
+// When "copyIdeResources" is enabled, this will also run before the game launches in IDE environments.
+// See https://docs.gradle.org/current/dsl/org.gradle.language.jvm.tasks.ProcessResources.html
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+            minecraft_version: minecraft_version, minecraft_version_range: minecraft_version_range,
+            forge_version: forge_version, forge_version_range: forge_version_range,
+            loader_version_range: loader_version_range,
+            mod_id: mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: mod_version,
+            mod_authors: mod_authors, mod_description: mod_description,
+            ae2_version_range: ae2_version_range,
+            guideme_version_range: guideme_version_range,
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand replaceProperties + [project: project]
+    }
+}
+
+// Example for how to get properties into the manifest for reading at runtime.
+tasks.named('jar', Jar).configure {
+    // Classifier próprio para este jar "puro" (sem lmdbjava embutido), para não colidir com o
+    // nome de arquivo final do shadowJar (que usa archiveClassifier = '', ver abaixo). Sem isso,
+    // 'jar' e 'shadowJar' escrevem no mesmo build/libs/ae2lmdb-<versão>.jar, e o Gradle 8 recusa
+    // o build porque 'reobfJar' (que reobfusca a saída de 'jar') e 'shadowJar' disputam esse
+    // mesmo arquivo sem uma dependência declarada entre si.
+    archiveClassifier = 'slim'
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1', // We are version 1 of ourselves
+                'Implementation-Title'    : project.name,
+                'Implementation-Version'  : project.jar.archiveVersion,
+                'Implementation-Vendor'   : mod_authors,
+                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+        ])
+    }
+
+}
+
+// Empacota apenas o que está na configuração 'shade' (lmdbjava + transitivas) junto do nosso próprio código,
+// e reobfusca ESSE jar (não o 'jar' normal) para o resultado final ir para build/libs/ com as dependências dentro.
+shadowJar {
+    archiveClassifier = ''
+    configurations = [project.configurations.shade]
+    // Evita conflitos caso outro mod também traga o Agrona/lmdbjava; ajuste o pacote de destino se preferir outro.
+    relocate 'org.agrona', 'com.example.ae2lmdb.shadow.agrona'
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1',
+                'Implementation-Title'    : project.name,
+                'Implementation-Version'  : project.jar.archiveVersion,
+                'Implementation-Vendor'   : mod_authors,
+                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+        ])
+    }
+}
+
+reobf {
+    shadowJar {}
+}
+
+tasks.named('assemble').configure {
+    dependsOn 'reobfShadowJar'
+}
+
+// Example configuration to allow publishing using the maven-publish plugin
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            artifact shadowJar
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/mcmodsrepo"
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+}
+
+// Testes em src/test/java: rodam como JVM pura (sem Minecraft), via `./gradlew test`.
+// LmdbManagerTest (Fase 1) é o primeiro exemplo — não precisa de nenhuma classe do jogo.
+test {
+    useJUnitPlatform()
+}

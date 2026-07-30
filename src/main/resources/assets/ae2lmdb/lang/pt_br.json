@@ -1,0 +1,5 @@
+{
+  "item.ae2lmdb.database_storage_cell": "Célula de Armazenamento LMDB do AE2",
+  "item.ae2lmdb.database_storage_cell.tooltip": "Armazena itens em um banco LMDB em vez de NBT. Capacidade: %s.",
+  "itemGroup.ae2lmdb": "AE2 LMDB Cells"
+}
