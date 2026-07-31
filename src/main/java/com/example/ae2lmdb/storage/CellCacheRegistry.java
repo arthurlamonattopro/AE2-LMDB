@@ -105,6 +105,15 @@ public final class CellCacheRegistry {
     }
 
     /**
+     * Snapshot somente-leitura dos caches atualmente montados em alguma rede AE2 — usado pelo
+     * comando de debug {@code /ae2lmdb} para mostrar quais células estão ativas nesta sessão do
+     * servidor.
+     */
+    public java.util.Map<UUID, CellCache> getActiveCaches() {
+        return java.util.Collections.unmodifiableMap(activeCaches);
+    }
+
+    /**
      * Tenta reivindicar este UUID como "montado" nesta sessão do servidor (Fase 5 do TODO.md —
      * mitigação de duplicação de UUID). Retorna {@code false} se outra {@code DatabaseStorageCell}
      * já reivindicou o mesmo UUID e ainda não foi liberada via {@link #releaseMount} — sinal de

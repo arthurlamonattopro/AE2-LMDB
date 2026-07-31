@@ -1,6 +1,7 @@
 package com.example.ae2lmdb;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.world.level.ItemLike;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.ModLoadingContext;
@@ -14,8 +15,10 @@ import appeng.api.storage.StorageCells;
 import appeng.api.upgrades.Upgrades;
 import appeng.core.definitions.AEItems;
 
+import com.example.ae2lmdb.command.AE2LmdbCommand;
 import com.example.ae2lmdb.config.ModConfig;
 import com.example.ae2lmdb.event.WorldSaveHandler;
+import com.example.ae2lmdb.item.ModCreativeTab;
 import com.example.ae2lmdb.item.ModItems;
 import com.example.ae2lmdb.storage.DatabaseCellHandler;
 
@@ -55,12 +58,14 @@ public class AE2LmdbMod {
 
         IEventBus modBus = context.getModEventBus();
         ModItems.ITEMS.register(modBus);
+        ModCreativeTab.register(modBus);
         modBus.addListener(this::commonSetup);
 
         // Registra a config no ModLoadingContext. O arquivo gerado é config/ae2lmdb-common.toml.
         ModLoadingContext.get().registerConfig(Type.COMMON, ModConfig.SPEC);
 
         MinecraftForge.EVENT_BUS.register(new WorldSaveHandler());
+        MinecraftForge.EVENT_BUS.register(new AE2LmdbCommand());
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {
@@ -73,21 +78,31 @@ public class AE2LmdbMod {
     }
 
     /**
-     * Registra os upgrade cards aceitos pela nossa célula — mesmos 4 que as cells nativas de
-     * itens da AE2. {@code Upgrades.add(upgradedItem, upgradeCard, maxCount, group)} associa
-     * um upgrade card a um item "upgradeable", e o {@code ItemUpgradeInventory} retornado por
+     * Registra os upgrade cards aceitos pelas células LMDB — mesmos 4 que as cells nativas da AE2.
+     * {@code Upgrades.add(upgradedItem, upgradeCard, maxCount, group)} associa um upgrade card a
+     * um item "upgradeable", e o {@code ItemUpgradeInventory} retornado por
      * {@code DatabaseStorageCellItem#getUpgrades} respeita esses registros automaticamente.
      *
-     * <p>O grupo (4º argumento) é só uma chave de tradução para o tooltip; reusar
-     * {@code "item.ae2lmdb.database_storage_cell"} faz o tooltip do card mostrar esta célula
-     * como uma das compatíveis.</p>
+     * <p>O grupo (4º argumento) é só uma chave de tradução para o tooltip; usar o nome do item
+     * faz o tooltip do card mostrar a célula como uma das compatíveis.</p>
+     *
+     * <p><b>Fase 7+:</b> registra upgrades para todas as 4 células (item, fluid, portable item,
+     * portable fluid).</p>
      */
     private static void registerUpgrades() {
-        var cell = ModItems.DATABASE_STORAGE_CELL.get();
-        // 1 de cada: mesmo padrão das cells nativas de itens da AE2 (ver InitUpgrades).
-        Upgrades.add(cell, AEItems.FUZZY_CARD, 1, "item.ae2lmdb.database_storage_cell");
-        Upgrades.add(cell, AEItems.INVERTER_CARD, 1, "item.ae2lmdb.database_storage_cell");
-        Upgrades.add(cell, AEItems.EQUAL_DISTRIBUTION_CARD, 1, "item.ae2lmdb.database_storage_cell");
-        Upgrades.add(cell, AEItems.VOID_CARD, 1, "item.ae2lmdb.database_storage_cell");
+        // Células normais
+        var itemCell = ModItems.DATABASE_STORAGE_CELL.get();
+        var fluidCell = ModItems.DATABASE_FLUID_STORAGE_CELL.get();
+        // Células portáteis
+        var portableItemCell = ModItems.PORTABLE_DATABASE_STORAGE_CELL.get();
+        var portableFluidCell = ModItems.PORTABLE_DATABASE_FLUID_STORAGE_CELL.get();
+
+        // 1 de cada: mesmo padrão das cells nativas da AE2 (ver InitUpgrades).
+        for (ItemLike cell : new ItemLike[]{itemCell, fluidCell, portableItemCell, portableFluidCell}) {
+            Upgrades.add(cell, AEItems.FUZZY_CARD, 1, "item.ae2lmdb.database_storage_cell");
+            Upgrades.add(cell, AEItems.INVERTER_CARD, 1, "item.ae2lmdb.database_storage_cell");
+            Upgrades.add(cell, AEItems.EQUAL_DISTRIBUTION_CARD, 1, "item.ae2lmdb.database_storage_cell");
+            Upgrades.add(cell, AEItems.VOID_CARD, 1, "item.ae2lmdb.database_storage_cell");
+        }
     }
 }

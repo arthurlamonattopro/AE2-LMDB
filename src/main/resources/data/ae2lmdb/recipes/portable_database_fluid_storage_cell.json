@@ -1,0 +1,27 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "ae2:chest"
+    },
+    {
+      "item": "ae2:cell_component_64k"
+    },
+    {
+      "item": "ae2:energy_cell"
+    },
+    {
+      "item": "ae2:fluid_cell_housing"
+    },
+    {
+      "item": "ae2:calculation_processor"
+    },
+    {
+      "item": "ae2:engineering_processor"
+    }
+  ],
+  "result": {
+    "item": "ae2lmdb:portable_database_fluid_storage_cell"
+  }
+}

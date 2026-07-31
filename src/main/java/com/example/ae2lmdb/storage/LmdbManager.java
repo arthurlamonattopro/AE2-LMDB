@@ -168,6 +168,32 @@ public final class LmdbManager implements AutoCloseable {
     }
 
     /**
+     * Lista todos os UUIDs de células que têm pelo menos uma entrada gravada no LMDB (debug —
+     * usado pelo comando {@code /ae2lmdb list}).
+     *
+     * <p>Percorre o cursor do início ao fim, agrupando os 16 bytes iniciais (prefixo de UUID) das
+     * chaves e descartando duplicatas. Custo {@code O(N)} sobre o número de entradas no LMDB —
+     * aceitável em ambiente de debug, não em hot path.</p>
+     */
+    public java.util.Set<UUID> listCellIds() {
+        java.util.LinkedHashMap<UUID, Boolean> seen = new java.util.LinkedHashMap<>();
+        try (Txn<byte[]> txn = env.txnRead();
+                Cursor<byte[]> cursor = db.openCursor(txn)) {
+            boolean found = cursor.first();
+            while (found) {
+                byte[] key = cursor.key();
+                if (key.length >= 16) {
+                    long msb = ByteBuffer.wrap(key, 0, 8).getLong();
+                    long lsb = ByteBuffer.wrap(key, 8, 8).getLong();
+                    seen.put(new UUID(msb, lsb), Boolean.TRUE);
+                }
+                found = cursor.next();
+            }
+        }
+        return seen.keySet();
+    }
+
+    /**
      * Carrega todos os pares AEKey-&gt;quantidade de uma célula (Fase 3 do TODO.md — usado por
      * {@code CellCache} para reconstruir o cache em memória ao montar a célula na rede).
      *

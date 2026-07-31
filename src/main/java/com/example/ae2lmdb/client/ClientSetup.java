@@ -37,13 +37,15 @@ public final class ClientSetup {
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
-            // O id do modelo é "ae2lmdb:block/drive/cells/database_storage_cell" — aponta para
-            // assets/ae2lmdb/models/block/drive/cells/database_storage_cell.json, que por sua
-            // vez estende ae2:block/drive/drive_cell (o modelo pai que define a geometria do
-            // slot da drive) e só sobrescreve a textura "cell".
+            // O id do modelo aponta para assets/ae2lmdb/models/block/drive/cells/<name>.json,
+            // que estende ae2:block/drive/drive_cell e só sobrescreve a textura "cell".
             StorageCellModels.registerModel(
                     ModItems.DATABASE_STORAGE_CELL.get(),
                     new ResourceLocation(AE2LmdbMod.MODID, "block/drive/cells/database_storage_cell"));
+            StorageCellModels.registerModel(
+                    ModItems.DATABASE_FLUID_STORAGE_CELL.get(),
+                    new ResourceLocation(AE2LmdbMod.MODID, "block/drive/cells/database_fluid_storage_cell"));
+            // Nota: células portáteis não têm modelo de drive — elas são itens portáteis.
         });
     }
 }

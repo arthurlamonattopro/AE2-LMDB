@@ -10,7 +10,6 @@ import net.minecraft.world.level.Level;
 
 import appeng.api.config.FuzzyMode;
 import appeng.api.stacks.AEKeyType;
-import appeng.api.storage.cells.ICellWorkbenchItem;
 import appeng.api.upgrades.IUpgradeInventory;
 import appeng.api.upgrades.UpgradeInventories;
 import appeng.items.AEBaseItem;
@@ -20,7 +19,8 @@ import appeng.util.ConfigInventory;
 import com.example.ae2lmdb.config.ModConfig;
 
 /**
- * Item da célula de armazenamento (Fase 2 do TODO.md; ampliado na Fase 4).
+ * Item da célula de armazenamento LMDB — suporta tanto itens quanto fluidos (Fase 2 do TODO.md;
+ * ampliado nas Fases 4, 7+).
  *
  * <p>Segue a decisão arquitetural nº1 do AGENTS.md ao pé da letra: a NBT deste item guarda
  * <b>apenas</b> um UUID (tag {@value #TAG_CELL_ID}) — nunca o conteúdo da célula. O conteúdo
@@ -28,40 +28,16 @@ import com.example.ae2lmdb.config.ModConfig;
  * {@link com.example.ae2lmdb.storage.LmdbManager} e, a partir da Fase 3,
  * {@code CellCache}/{@code LmdbBackedStorage}).</p>
  *
- * <p><b>Fase 4 — mudanças:</b></p>
- * <ul>
- *   <li>Agora estende {@link AEBaseItem} em vez de {@link Item} puro — ganha
- *   {@code getRegistryName}, {@code addToMainCreativeTab} e tratamento de tooltip consistente
- *   com o resto do AE2.</li>
+ * <p><b>Importante:</b> implementa {@link DatabaseCellItem} (interface própria do addon) em vez
+ * de {@code IBasicCellItem}. Isso evita que o {@code BasicCellHandler} nativo da AE2 reivindique
+ * o item e use NBT pura — ver javadoc de {@link DatabaseCellItem} para detalhes.</p>
  *
- *   <li><b>Implementa {@link ICellWorkbenchItem} (NÃO {@code IBasicCellItem}) —</b> essa troca
- *   corrige um bug real encontrado em produção ("só é possível guardar um tipo de item por
- *   célula"). O motivo: {@code IBasicCellItem} não é só um marcador de tooltip — o próprio
- *   javadoc da AE2 diz "Implement this on any item to register a 'basic cell'". Ou seja,
- *   implementá-la sozinha já registra o item no {@code BasicCellHandler} <em>nativo</em> da
- *   AE2 (que também está registrado via {@code StorageCells.addCellHandler}, junto com o nosso
- *   {@code DatabaseCellHandler}). Como os dois handlers passavam a reivindicar o mesmo item,
- *   o {@code BasicCellHandler} nativo processava a célula usando NBT pura (o oposto da decisão
- *   arquitetural nº1 do AGENTS.md) e interpretava {@code getTotalTypes()==0} (nossa convenção
- *   de "ilimitado") como um cap literal de tipos — travando a célula logo após o primeiro tipo
- *   inserido. {@code ICellWorkbenchItem} é a interface-pai, sem os métodos de
- *   bytes/tipos/idleDrain que fazem a AE2 reconhecer "basic cells" — mantém Cell Workbench
- *   (config inventory + fuzzy mode) funcionando, mas deixa o {@code DatabaseCellHandler} como
- *   único dono do item.</li>
- *
- *   <li>Implementa {@link #getConfigInventory} retornando um {@link ConfigInventory} de
- *   <i>config types</i> — esse é o inventário que a Cell Workbench mostra para o jogador
- *   configurar o particionamento (whitelist de chaves aceitas). A {@code DatabaseStorageCell}
- *   lê esse inventário no momento de montar a célula e constrói um {@code IPartitionList}
- *   para rejeitar inserts que não batem com o partition.</li>
- *
- *   <li>Implementa {@link #getUpgrades} retornando um {@link IUpgradeInventory} persistido na
- *   NBT — esse é o inventário de upgrade cards (Fuzzy Card, Inverter Card, etc.) que a Cell
- *   Workbench mostra e que {@code Upgrades.add} (registrado em {@code AE2LmdbMod#commonSetup})
- *   popula com os cards aceitos.</li>
- * </ul>
+ * <p><b>Fase 7+ — suporte a fluidos:</b> o {@link #keyType} (passado no construtor) define se
+ * esta célula armazena itens ({@code AEKeyType.items()}) ou fluidos ({@code AEKeyType.fluids()}).
+ * O filtro de {@link #getConfigInventory} reflete esse tipo, e o {@link DatabaseStorageCell}
+ * verifica compatibilidade de chave ao inserir/extrair.</p>
  */
-public class DatabaseStorageCellItem extends AEBaseItem implements ICellWorkbenchItem {
+public class DatabaseStorageCellItem extends AEBaseItem implements DatabaseCellItem {
 
     /** Tag NBT que guarda o UUID da célula — o único dado de gameplay persistido no ItemStack. */
     private static final String TAG_CELL_ID = "CellId";
@@ -69,9 +45,12 @@ public class DatabaseStorageCellItem extends AEBaseItem implements ICellWorkbenc
     /** Tag NBT que guarda o {@link FuzzyMode} configurado via Cell Workbench. */
     private static final String TAG_FUZZY_MODE = "FuzzyMode";
 
-    public DatabaseStorageCellItem(Properties properties) {
+    private final AEKeyType keyType;
+
+    public DatabaseStorageCellItem(AEKeyType keyType, Properties properties) {
         // Assim como as storage cells nativas da AE2, a célula em si nunca empilha.
         super(properties.stacksTo(1));
+        this.keyType = keyType;
     }
 
     @Override
@@ -131,8 +110,7 @@ public class DatabaseStorageCellItem extends AEBaseItem implements ICellWorkbenc
     // ---------------------------------------------------------------------
 
     public AEKeyType getKeyType() {
-        // Célula de itens por enquanto (Fase 4). Fluid cells ficam no backlog (TODO.md, fase 7+).
-        return AEKeyType.items();
+        return keyType;
     }
 
     public int getBytes(ItemStack is) {

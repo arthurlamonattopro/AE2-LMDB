@@ -1,174 +1,58 @@
 # AE2 LMDB Cells
 
-<p align="center">
-  <strong>High-performance storage backend for Applied Energistics 2.</strong><br>
-  Replace huge Storage Cell NBT with an LMDB database.
-</p>
+Addon para [Applied Energistics 2](https://github.com/AppliedEnergistics/Applied-Energistics-2) (Minecraft 1.20.1, Forge) que substitui o armazenamento baseado em NBT das Storage Cells por um backend em **LMDB** (Lightning Memory-Mapped Database).
 
-<p align="center">
+## Problema que resolve
 
-![Minecraft](https://img.shields.io/badge/Minecraft-1.20.1-green)
-![Forge](https://img.shields.io/badge/Forge-47.x-orange)
-![Java](https://img.shields.io/badge/Java-17-blue)
-![Status](https://img.shields.io/badge/Status-Beta-yellow)
+No AE2 padrão, cada Storage Cell física serializa toda a sua lista de tipos/quantidades como NBT dentro do próprio `ItemStack`. Em modpacks com muitos tipos de item (variantes NBT, encantamentos, durabilidade, itens de outros mods), essa NBT cresce muito e causa:
 
-</p>
+- Lag no salvamento de chunk (NBT gigante sendo serializada a cada save)
+- Payload grande de sincronização cliente/servidor ao segurar a célula
+- Risco de corrupção em NBTs muito grandes
+- Limite prático de ~63 tipos por célula (modelo de custo do próprio AE2)
 
----
+## Como resolve
 
-## Overview
-
-AE2 LMDB Cells replaces the traditional NBT storage used by Applied Energistics 2 Storage Cells with a high-performance LMDB database.
-
-Instead of storing every item directly inside the ItemStack, each Storage Cell stores only a UUID. The real contents are stored externally inside a world-specific database.
-
-This dramatically reduces NBT size while keeping gameplay completely transparent.
-
----
-
-# ✨ Features
-
-- 🚀 Extremely small Storage Cell NBT
-- ⚡ Fast in-memory cache
-- 💾 Asynchronous disk writes
-- 📦 One LMDB database per world
-- 🔄 Automatic synchronization
-- 🔍 UUID-based storage
-- 🔧 Transparent to players
-
----
-
-# ❓ Why?
-
-The default AE2 implementation stores every item directly inside the Storage Cell's NBT.
-
-Large modpacks often generate huge NBT payloads due to:
-
-- Enchantments
-- Durability
-- Custom NBT
-- Modded items
-- Thousands of unique item variants
-
-This increases:
-
-- Save time
-- Network traffic
-- Memory usage
-- NBT corruption risk
-
----
-
-# ⚙ How it works
+- A célula guarda apenas um **UUID** na NBT do item (quase nada).
+- O conteúdo real (`AEKey -> long`) fica em um banco **LMDB**, um arquivo por mundo salvo, indexado por esse UUID.
+- Uma camada de cache em memória (`ConcurrentHashMap`) fica na frente do LMDB: todas as operações do jogo (insert/extract) acontecem no cache; o disco só recebe flush assíncrono periódico, em save do mundo, ou quando a célula sai da rede.
 
 ```
-          Storage Cell
-
-     ┌──────────────────┐
-     │ UUID only in NBT │
-     └────────┬─────────┘
-              │
-              ▼
-     ┌──────────────────┐
-     │ Memory Cache     │
-     │ ConcurrentHashMap│
-     └────────┬─────────┘
-              │
-     Async Flush
-              │
-              ▼
-     ┌──────────────────┐
-     │ LMDB Database    │
-     │ UUID → Items     │
-     └──────────────────┘
+ItemStack (célula)          LMDB (por save)
+┌───────────────┐           ┌─────────────────────┐
+│ NBT: { uuid }  │  ──────▶ │ subdb "uuid" →       │
+└───────────────┘           │   AEKey → count (KV) │
+                             └─────────────────────┘
+        ▲
+        │ cache em memória (ConcurrentHashMap)
+        │ flush assíncrono
 ```
 
-Gameplay never talks directly to the disk.
-
-All insert/extract operations happen in memory and are periodically synchronized with LMDB.
-
----
-
-# 📦 Requirements
+## Requisitos
 
 - Minecraft 1.20.1
-- Forge
+- Forge (MDK correspondente)
 - Java 17
-- Applied Energistics 2
-- lmdbjava (shaded)
+- Applied Energistics 2 (dependência de compile/runtime)
+- [lmdbjava](https://github.com/lmdbjava/lmdbjava) (shaded no jar final)
 
----
-
-# 🔨 Building
+## Build
 
 ```bash
 ./gradlew build
 ```
 
-Output:
+O jar final fica em `build/libs/`. Requer o AE2 instalado no mesmo modpack.
 
-```
-build/libs/
-```
+## Limitações conhecidas
 
----
+- **Duplicação de item = duplicação de referência (mitigada, não eliminada).** Copiar a célula fora do fluxo normal do jogo (pick block no criativo, `/give` com NBT copiada, clonagem por outros mods) pode fazer duas células apontarem pro mesmo UUID. A partir da Fase 5, o addon detecta quando duas células com o mesmo UUID são montadas em alguma rede ao mesmo tempo e dá um UUID novo (com cópia do conteúdo) pra segunda — mas essa detecção tem uma janela de falso negativo documentada em `CellCacheRegistry#acquireMount`. Veja `TODO.md` para os detalhes e o que falta testar manualmente.
+- Cada save de mundo tem seu próprio banco LMDB; células não são portáveis entre mundos.
 
-# ⚠ Known Limitations
+## Status
 
-### Cell duplication
+Em desenvolvimento inicial. Veja `TODO.md` para o roadmap e `AGENTS.md` para convenções de código.
 
-Duplicating a Storage Cell outside normal gameplay (Creative cloning, `/give`, etc.) may initially duplicate its UUID.
+## Licença
 
-The addon detects duplicated mounted cells and automatically generates a new UUID while copying the contents.
-
-Some edge cases are still documented in `TODO.md`.
-
----
-
-### World databases
-
-Each world has its own LMDB database.
-
-Storage Cells are **not portable between worlds.**
-
----
-
-# 📈 Performance
-
-Compared to vanilla Storage Cells:
-
-| Feature | Vanilla AE2 | AE2 LMDB |
-|----------|------------|-----------|
-| Item NBT Size | Large | Tiny |
-| Save Performance | Medium | High |
-| Network Payload | Large | Small |
-| Disk Storage | NBT | LMDB |
-| Memory Cache | ❌ | ✅ |
-
----
-
-# 🚧 Project Status
-
-> **Beta**
-
-Core functionality is working.
-
-Current focus:
-
-- More testing
-- Edge case fixes
-- Performance tuning
-- Better migration support
-
----
-
-# 📚 Documentation
-
-- `TODO.md` — Roadmap
-- `AGENTS.md` — Coding conventions
-
----
-
-# License
-
-License to be defined.
+_A definir._

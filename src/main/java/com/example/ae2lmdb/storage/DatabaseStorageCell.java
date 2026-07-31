@@ -24,11 +24,11 @@ import appeng.util.ConfigInventory;
 import appeng.util.prioritylist.IPartitionList;
 
 import com.example.ae2lmdb.config.ModConfig;
+import com.example.ae2lmdb.item.DatabaseCellItem;
 import com.example.ae2lmdb.item.DatabaseStorageCellItem;
 
 /**
- * {@link StorageCell} de uma {@code DatabaseStorageCellItem} (Fase 2 do TODO.md; ampliado
- * nas Fases 3 e 4).
+ * {@link StorageCell} para células LMDB do addon (Fase 2 do TODO.md; ampliado nas Fases 3, 4 e 7+).
  *
  * <p><b>Fase 3:</b> o conteúdo agora vive num {@link CellCache} carregado do LMDB (via
  * {@link CellCacheRegistry#getOrLoad}) no momento em que a célula é montada na rede (em
@@ -56,13 +56,10 @@ import com.example.ae2lmdb.item.DatabaseStorageCellItem;
  *   quando ambos os caps foram atingidos. Antes da Fase 4 só havia EMPTY/NOT_EMPTY.</li>
  * </ul>
  *
- * <p><b>Fase 5 — mitigação de duplicação de UUID:</b> antes de montar o cache desta célula, o
- * construtor reivindica o UUID via {@link CellCacheRegistry#acquireMount}. Se o UUID já estiver
- * reivindicado por outra célula ainda montada (duas ItemStacks distintas com o mesmo UUID — pick
- * block, {@code /give} com NBT copiada, bug de duplicação de outro mod), esta célula recebe um
- * <b>novo</b> UUID com uma cópia do conteúdo atual ({@link CellCacheRegistry#cloneCellData}), em
- * vez de compartilhar o estoque com a célula original. Ver o javadoc de
- * {@link CellCacheRegistry#acquireMount} para a limitação conhecida dessa checagem.</p>
+ * <p><b>Fase 7+ — generalização:</b> agora trabalha com qualquer item que implemente
+ * {@link DatabaseCellItem}, incluindo células normais e portáteis, de itens ou fluidos.
+ * O filtro de tipo de chave é aplicado no {@code insert} para garantir que células de itens
+ * não aceitem fluidos e vice-versa.</p>
  */
 public final class DatabaseStorageCell implements StorageCell {
 
@@ -74,8 +71,10 @@ public final class DatabaseStorageCell implements StorageCell {
     private final LmdbBackedStorage storage;
     private final IPartitionList partitionList;
     private final FuzzyMode fuzzyMode;
+    private final DatabaseCellItem cellItem;
 
     public DatabaseStorageCell(ItemStack cellStack, @Nullable ISaveProvider container) {
+        this.cellItem = (DatabaseCellItem) cellStack.getItem();
         UUID id = DatabaseStorageCellItem.getOrCreateCellId(cellStack);
         CellCacheRegistry registry = CellCacheRegistry.getInstance();
         if (!registry.acquireMount(id)) {
@@ -99,8 +98,7 @@ public final class DatabaseStorageCell implements StorageCell {
         // Constrói o partition list a partir do config inventory do ItemStack. Se o jogador
         // não configurou nada (cell nova), o partitionList fica vazio = aceita tudo (o default
         // de IPartitionList.matchesFilter com lista vazia é true).
-        DatabaseStorageCellItem item = (DatabaseStorageCellItem) cellStack.getItem();
-        ConfigInventory config = item.getConfigInventory(cellStack);
+        ConfigInventory config = cellItem.getConfigInventory(cellStack);
         IPartitionList.Builder builder = IPartitionList.builder();
         config.keySet().forEach(builder::add);
 
@@ -108,8 +106,8 @@ public final class DatabaseStorageCell implements StorageCell {
         // A presença do upgrade é checada via IUpgradeInventory do item (registrados em
         // AE2LmdbMod#commonSetup). ItemDefinition implementa ItemLike, então pode ser passado
         // direto para isInstalled(ItemLike).
-        this.fuzzyMode = item.getFuzzyMode(cellStack);
-        if (item.getUpgrades(cellStack).isInstalled(AEItems.FUZZY_CARD)) {
+        this.fuzzyMode = cellItem.getFuzzyMode(cellStack);
+        if (cellItem.getUpgrades(cellStack).isInstalled(AEItems.FUZZY_CARD)) {
             builder.fuzzyMode(fuzzyMode);
         }
         this.partitionList = builder.build();
@@ -123,6 +121,10 @@ public final class DatabaseStorageCell implements StorageCell {
     @Override
     public long insert(AEKey what, long amount, Actionable mode, IActionSource source) {
         if (amount <= 0) {
+            return 0;
+        }
+        // 0) Filtro de tipo: célula de itens só aceita AEKeyType.items(), fluidos só fluids().
+        if (!cellItem.getKeyType().contains(what)) {
             return 0;
         }
         // 1) Partition list: se houver partition configurada (lista não vazia) e a chave não
@@ -166,6 +168,9 @@ public final class DatabaseStorageCell implements StorageCell {
 
     @Override
     public long extract(AEKey what, long amount, Actionable mode, IActionSource source) {
+        if (!cellItem.getKeyType().contains(what)) {
+            return 0;
+        }
         long extracted = storage.extract(what, amount, mode, source);
         if (mode == Actionable.MODULATE && extracted > 0) {
             markChanged();
@@ -175,7 +180,7 @@ public final class DatabaseStorageCell implements StorageCell {
 
     @Override
     public void getAvailableStacks(KeyCounter out) {
-        storage.getAvailableStacks(out);
+        storage.getAvailableStacks(out, cellItem.getKeyType()::contains);
     }
 
     @Override
@@ -206,7 +211,7 @@ public final class DatabaseStorageCell implements StorageCell {
 
     @Override
     public double getIdleDrain() {
-        return ModConfig.common().idleDrain.get();
+        return cellItem.getIdleDrain();
     }
 
     /**

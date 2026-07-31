@@ -1,5 +1,7 @@
 package com.example.ae2lmdb.storage;
 
+import java.util.function.Predicate;
+
 import net.minecraft.network.chat.Component;
 
 import appeng.api.config.Actionable;
@@ -73,6 +75,14 @@ public final class LmdbBackedStorage implements MEStorage {
     @Override
     public void getAvailableStacks(KeyCounter out) {
         cache.contents().forEach(out::add);
+    }
+
+    public void getAvailableStacks(KeyCounter out, Predicate<AEKey> filter) {
+        cache.contents().forEach((key, amount) -> {
+            if (filter.test(key)) {
+                out.add(key, amount);
+            }
+        });
     }
 
     @Override
