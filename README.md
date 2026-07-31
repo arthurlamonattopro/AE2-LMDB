@@ -10,7 +10,7 @@
 ![Minecraft](https://img.shields.io/badge/Minecraft-1.20.1-green)
 ![Forge](https://img.shields.io/badge/Forge-47.x-orange)
 ![Java](https://img.shields.io/badge/Java-17-blue)
-![Status](https://img.shields.io/badge/Status-Beta-yellow)
+![Status](https://img.shields.io/badge/Status-Realease-green)
 
 </p>
 
